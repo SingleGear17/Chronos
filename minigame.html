@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHRONOS // EXPEDITION TERMINAL</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #020810;
+    --panel: #060f22;
+    --border: #0a1e3d;
+    --accent: #00aaff;
+    --warn: #ffaa00;
+    --danger: #ff2244;
+    --mono: 'Share Tech Mono', monospace;
+    --orb: 'Orbitron', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body {
+    background: var(--bg); color: var(--accent);
+    font-family: var(--mono); overflow: hidden;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 3px);
+  }
+
+  .top-hud {
+    display: flex; gap: 10px; padding: 10px; background: rgba(2,8,16,0.9);
+    border-bottom: 1px solid var(--border); z-index: 10;
+  }
+  .hud-box { flex: 1; border: 1px solid var(--border); padding: 10px; background: var(--panel); }
+  .hud-title { font-size: 9px; letter-spacing: 2px; color: #5a8aaa; margin-bottom: 4px; }
+  .hud-val { font-family: var(--orb); font-size: 18px; font-weight: 700; }
+  
+  .danger { color: var(--danger); animation: blink 0.5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  #main-screen {
+    flex: 1; display: flex; position: relative;
+  }
+  
+  /* Canvas Background */
+  #space-canvas { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
+
+  /* Radar / Overview Log */
+  .tactical-log {
+    position: absolute; right: 20px; top: 20px; width: 300px; bottom: 20px;
+    background: rgba(6,15,34,0.85); border: 1px solid var(--border);
+    display: flex; flex-direction: column; z-index: 10; backdrop-filter: blur(4px);
+  }
+  .log-header { padding: 8px; border-bottom: 1px solid var(--border); font-size: 10px; letter-spacing: 2px; background: rgba(0,170,255,0.1); }
+  .log-content { flex: 1; padding: 10px; overflow-y: hidden; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+  .log-entry { opacity: 0.8; }
+  .log-entry.warn { color: var(--warn); }
+  .log-entry.crit { color: var(--danger); font-weight: bold; }
+
+  /* Controls */
+  .dashboard {
+    height: 180px; background: var(--panel); border-top: 1px solid var(--border);
+    display: flex; padding: 15px; gap: 20px; z-index: 10;
+  }
+  
+  .throttle-sec { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .power-sec { flex: 1.5; display: flex; flex-direction: column; gap: 10px; border-left: 1px solid var(--border); padding-left: 20px; }
+  
+  .slider-container { display: flex; align-items: center; gap: 15px; margin-top: 15px; }
+  input[type=range] { flex: 1; -webkit-appearance: none; background: transparent; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; background: var(--border); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 12px; background: var(--accent); margin-top: -10px; }
+
+  .power-row { display: flex; align-items: center; gap: 10px; }
+  .pwr-label { width: 50px; font-size: 10px; letter-spacing: 1px; }
+  .pwr-bar-bg { flex: 1; height: 12px; background: var(--bg); border: 1px solid var(--border); display: flex; cursor: pointer; }
+  .pwr-bar-fill { height: 100%; background: var(--accent); transition: width 0.2s; }
+  .pwr-btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); padding: 2px 8px; font-size: 10px; cursor: pointer; }
+  .pwr-btn:hover { background: rgba(0,170,255,0.2); }
+
+  #game-over {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .go-title { font-family: var(--orb); font-size: 40px; margin-bottom: 10px; }
+  .btn-reboot { background: transparent; border: 1px solid var(--accent); color: var(--accent); padding: 12px 24px; font-family: var(--mono); cursor: pointer; letter-spacing: 2px; margin-top: 20px; }
+  .btn-reboot:hover { background: var(--accent); color: var(--bg); }
+</style>
+</head>
+<body>
+
+<div class="top-hud">
+  <div class="hud-box">
+    <div class="hud-title">EARTH YEAR (TARGET: 3000)</div>
+    <div class="hud-val" id="val-year">2026.00</div>
+  </div>
+  <div class="hud-box">
+    <div class="hud-title">VELOCITY (% c)</div>
+    <div class="hud-val" id="val-vel">0.00%</div>
+  </div>
+  <div class="hud-box">
+    <div class="hud-title">G-FORCE</div>
+    <div class="hud-val" id="val-g">1.0 G</div>
+  </div>
+  <div class="hud-box">
+    <div class="hud-title">HULL INTEGRITY</div>
+    <div class="hud-val" id="val-hull">100%</div>
+  </div>
+</div>
+
+<div id="main-screen">
+  <canvas id="space-canvas"></canvas>
+  
+  <div class="tactical-log">
+    <div class="log-header">TACTICAL OVERVIEW // EVENT LOG</div>
+    <div class="log-content" id="log-content">
+      <div class="log-entry">System online. Destination: Year 3000.</div>
+      <div class="log-entry">Waiting for throttle engagement...</div>
+    </div>
+  </div>
+</div>
+
+<div class="dashboard">
+  <div class="throttle-sec">
+    <div style="font-size: 10px; letter-spacing: 2px; color: #5a8aaa;">MAIN THROTTLE</div>
+    <div class="slider-container">
+      <div style="font-size:12px;">MIN</div>
+      <input type="range" id="throttle" min="0" max="100" value="0">
+      <div style="font-size:12px;" id="val-throttle">0%</div>
+    </div>
+  </div>
+  
+  <div class="power-sec">
+    <div style="font-size: 10px; letter-spacing: 2px; color: #5a8aaa; margin-bottom: 5px;">POWER ROUTING (MAX CAP: 100%)</div>
+    
+    <div class="power-row">
+      <div class="pwr-label">ENGN</div>
+      <button class="pwr-btn" onclick="adjPower('ENGN', -10)">-</button>
+      <div class="pwr-bar-bg"><div class="pwr-bar-fill" id="bar-engn" style="width: 34%;"></div></div>
+      <button class="pwr-btn" onclick="adjPower('ENGN', 10)">+</button>
+      <div class="pwr-label" style="text-align:right" id="num-engn">34%</div>
+    </div>
+    <div class="power-row">
+      <div class="pwr-label">SHLD</div>
+      <button class="pwr-btn" onclick="adjPower('SHLD', -10)">-</button>
+      <div class="pwr-bar-bg"><div class="pwr-bar-fill" id="bar-shld" style="width: 33%;"></div></div>
+      <button class="pwr-btn" onclick="adjPower('SHLD', 10)">+</button>
+      <div class="pwr-label" style="text-align:right" id="num-shld">33%</div>
+    </div>
+    <div class="power-row">
+      <div class="pwr-label">DAMP</div>
+      <button class="pwr-btn" onclick="adjPower('DAMP', -10)">-</button>
+      <div class="pwr-bar-bg"><div class="pwr-bar-fill" id="bar-damp" style="width: 33%;"></div></div>
+      <button class="pwr-btn" onclick="adjPower('DAMP', 10)">+</button>
+      <div class="pwr-label" style="text-align:right" id="num-damp">33%</div>
+    </div>
+  </div>
+</div>
+
+<div id="game-over">
+  <div class="go-title" id="go-title">MISSION FAILED</div>
+  <div style="font-family: var(--sans); color: var(--text);" id="go-desc">Hull compromised.</div>
+  <button class="btn-reboot" onclick="location.reload()">REBOOT SYSTEM</button>
+</div>
+
+<script>
+  
+  // Canvas Setup
+  const canvas = document.getElementById('space-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H;
+  let particles = [];
+  function resize() { W = canvas.width = canvas.parentElement.clientWidth; H = canvas.height = canvas.parentElement.clientHeight; }
+  window.addEventListener('resize', resize); resize();
+  
+  for(let i=0; i<150; i++) particles.push({ x: (Math.random()-0.5)*W, y: (Math.random()-0.5)*H, z: Math.random()*1000 });
+
+  // Game State
+  let state = {
+    year: 2026, vel: 0, targetVel: 0, gForce: 1, hull: 100,
+    pwr: { ENGN: 34, SHLD: 33, DAMP: 33 },
+    throttle: 0, isOver: false,
+    activeAnomaly: null, anomalyTimer: 0
+  };
+
+  const DOM = {
+    year: document.getElementById('val-year'), vel: document.getElementById('val-vel'),
+    g: document.getElementById('val-g'), hull: document.getElementById('val-hull'),
+    throttle: document.getElementById('throttle'), throttleTxt: document.getElementById('val-throttle'),
+    log: document.getElementById('log-content')
+  };
+
+  DOM.throttle.addEventListener('input', (e) => {
+    state.throttle = e.target.value / 100;
+    DOM.throttleTxt.innerText = e.target.value + '%';
+  });
+
+  function adjPower(sys, val) {
+    let current = state.pwr[sys];
+    let newVal = current + val;
+    if (newVal < 0) newVal = 0;
+    if (newVal > 100) newVal = 100;
+    
+    // Calculate total needed adjustment
+    let diff = newVal - current;
+    let totalOther = 0;
+    let others = Object.keys(state.pwr).filter(k => k !== sys);
+    others.forEach(k => totalOther += state.pwr[k]);
+    
+    if (diff > 0) { // Steal from others
+      if (totalOther < diff) diff = totalOther; // Cannot steal more than exists
+      newVal = current + diff;
+      let stolen = 0;
+      // Steal evenly
+      while(stolen < diff) {
+        for (let k of others) {
+          if (state.pwr[k] > 0 && stolen < diff) { state.pwr[k]--; stolen++; }
+        }
+      }
+    } else if (diff < 0) { // Give to others (for simplicity, just let it sit or distribute evenly)
+      // Actually, standard EVE style: you just free up grid, but here we force exactly 100%
+      let given = 0;
+      let absDiff = Math.abs(diff);
+      while(given < absDiff) {
+        for (let k of others) {
+          if (state.pwr[k] < 100 && given < absDiff) { state.pwr[k]++; given++; }
+        }
+      }
+    }
+    state.pwr[sys] = newVal;
+    updatePowerUI();
+  }
+
+  function updatePowerUI() {
+    ['ENGN', 'SHLD', 'DAMP'].forEach(sys => {
+      document.getElementById(`bar-${sys.toLowerCase()}`).style.width = state.pwr[sys] + '%';
+      document.getElementById(`num-${sys.toLowerCase()}`).innerText = state.pwr[sys] + '%';
+    });
+  }
+
+  function addLog(msg, type="normal") {
+    const el = document.createElement('div');
+    el.className = `log-entry ${type}`;
+    el.innerText = `> ${msg}`;
+    DOM.log.appendChild(el);
+    if(DOM.log.children.length > 12) DOM.log.removeChild(DOM.log.firstChild);
+  }
+
+  function triggerAnomaly() {
+    if(state.activeAnomaly || state.vel < 0.1) return;
+    
+    const types = [
+      { id: 'DUST', name: 'Micro-meteorite Swarm', req: 'SHLD', minPwr: 60, dmg: 25, msg: 'WARNING: Micro-meteorites detected. BOOST SHIELDS (>60%). ETA 4s.' },
+      { id: 'GRAV', name: 'Gravitational Well', req: 'ENGN', minPwr: 70, dmg: 15, msg: 'WARNING: Gravitational pull increasing. BOOST ENGINES (>70%) to escape. ETA 4s.' },
+      { id: 'QUANT', name: 'Quantum Turbulence', req: 'DAMP', minPwr: 60, dmg: 20, msg: 'WARNING: Spatial turbulence. BOOST DAMPENERS (>60%) to prevent hull fracture. ETA 4s.' }
+    ];
+    
+    const anomaly = types[Math.floor(Math.random() * types.length)];
+    state.activeAnomaly = anomaly;
+    state.anomalyTimer = 400; // ~4 seconds at 100fps
+    addLog(anomaly.msg, 'warn');
+  }
+// Inisialisasi Audio Engine
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playAlertSiren() {
+  // Hanya jalankan jika browser mengizinkan audio
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  osc.type = 'square'; // Karakter suara retro/8-bit
+  
+  // Modulasi frekuensi (naik turun seperti sirene)
+  osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+  osc.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.2);
+  osc.frequency.linearRampToValueAtTime(400, audioCtx.currentTime + 0.4);
+  
+  // Atur volume agar tidak merusak telinga (10%)
+  gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.4);
+}
+
+// Cara pakainya: taruh playAlertSiren() di dalam fungsi triggerAnomaly()
+  function gameOver(title, desc) {
+    state.isOver = true;
+    document.getElementById('game-over').style.display = 'flex';
+    document.getElementById('go-title').innerText = title;
+    document.getElementById('go-desc').innerText = desc;
+    if(title === "MISSION SUCCESS") document.getElementById('go-title').style.color = 'var(--accent2)';
+    else document.getElementById('go-title').style.color = 'var(--danger)';
+  }
+
+  function loop() {
+    if (state.isOver) return;
+
+    // PHYSICS & ENGINE
+    // Engine power determines MAX speed reachable by throttle
+    let maxPossibleVel = (state.pwr.ENGN / 100) * 0.9999; 
+    state.targetVel = state.throttle * maxPossibleVel;
+    
+    // Acceleration Rate
+    let accel = (state.targetVel - state.vel) * 0.02;
+    state.vel += accel;
+    if(state.vel < 0) state.vel = 0;
+
+    // G-Force Calc: Depends on accel and Dampener power
+    // If Dampeners are 100%, G-force is absorbed. If 0%, player takes full Gs.
+    let dampFactor = 1 - (state.pwr.DAMP / 100);
+    state.gForce = 1 + (Math.abs(accel) * 3000 * dampFactor);
+
+    // Lorentz Time Dilation
+    let gamma = 1 / Math.sqrt(1 - Math.pow(state.vel, 2));
+    if(gamma > 1000) gamma = 1000;
+    
+    let baseTime = 0.005; // Time passing naturally
+    state.year += baseTime * gamma;
+
+    // ANOMALY SYSTEM
+    if (!state.activeAnomaly && Math.random() < 0.002) triggerAnomaly();
+    
+    if (state.activeAnomaly) {
+      state.anomalyTimer--;
+      if (state.anomalyTimer <= 0) {
+        // Resolve Anomaly
+        let reqPwr = state.pwr[state.activeAnomaly.req];
+        if (reqPwr >= state.activeAnomaly.minPwr) {
+          addLog(`SUCCESS: ${state.activeAnomaly.name} mitigated.`, 'normal');
+        } else {
+          addLog(`CRITICAL: Failed to route power. HULL -${state.activeAnomaly.dmg}%`, 'crit');
+          state.hull -= state.activeAnomaly.dmg;
+        }
+        state.activeAnomaly = null;
+      }
+    }
+
+    // DAMAGE & WIN CHECKS
+    if (state.gForce > 9.5) {
+      state.hull -= 0.5; // Hull rips apart if G-Force stays high
+      DOM.g.classList.add('danger');
+    } else {
+      DOM.g.classList.remove('danger');
+    }
+
+    if (state.hull <= 0) gameOver("HULL BREACH", `Ship destroyed in year ${Math.floor(state.year)}. G-Force or anomalies tore the vessel apart.`);
+    if (state.year >= 3000) gameOver("MISSION SUCCESS", "Welcome to the year 3000. You survived the time stream.");
+
+    // UPDATE UI
+    DOM.year.innerText = state.year.toFixed(2);
+    DOM.vel.innerText = (state.vel * 100).toFixed(2) + '%';
+    DOM.g.innerText = state.gForce.toFixed(1) + ' G';
+    DOM.hull.innerText = Math.floor(state.hull) + '%';
+    if(state.hull < 30) DOM.hull.classList.add('danger');
+
+    // DRAW CANVAS (Tunnel effect)
+    ctx.fillStyle = `rgba(2, 8, 16, ${1 - state.vel})`;
+    ctx.fillRect(0, 0, W, H);
+    
+    particles.forEach(p => {
+      p.z -= (2 + state.vel * 100);
+      if (p.z <= 1) { p.z = 1000; p.x = (Math.random()-0.5)*W; p.y = (Math.random()-0.5)*H; }
+      
+      let scale = 600 / p.z;
+      let px = p.x * scale + W/2;
+      let py = p.y * scale + H/2;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, scale * 1.5, 0, Math.PI*2);
+      ctx.fillStyle = (state.activeAnomaly) ? '#ff2244' : (state.vel > 0.9 ? '#ffffff' : '#00aaff');
+      ctx.fill();
+    });
+
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+</script>
+</body>
+</html>
